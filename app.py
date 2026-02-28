@@ -18,10 +18,10 @@ def predict():
         return jsonify({"error": "No message provided"}), 400
 
     message_vector = vectorizer.transform([message])
-    probability = model.predict_proba(message_vector)[0][1]
+    prediction = model.predict(message_vector)[0]
 
     return jsonify({
-        "scam_probability": float(probability)
+        "category": int(prediction)
     })
 
 if __name__ == "__main__":
