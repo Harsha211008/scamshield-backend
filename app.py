@@ -12,25 +12,37 @@ vectorizer = pickle.load(open("vectorizer.pkl", "rb"))
 @app.route('/predict', methods=['POST'])
 def predict():
 
-    data = request.get_json()
-    message = data['message']
+    try:
+        data = request.get_json()
 
-    prediction = model.predict([message])[0]
+        if not data or "message" not in data:
+            return jsonify({"category": 0})
 
-    # 👇 ADD THIS PART
-    text = message.lower()
+        message = str(data["message"]).strip()
 
-    scam_keywords = [
-        "prize", "gift", "claim", "winner",
-        "reward", "congratulations",
-        "offer", "free", "click here"
-    ]
+        if message == "":
+            return jsonify({"category": 0})
 
-    if prediction == 0:   # model said Safe
-        for word in scam_keywords:
-            if word in text:
-                prediction = 3   # upgrade to Scam
-                break
-    # 👆 ADD THIS PART
+        # Limit extremely long text
+        message = message[:500]
 
-    return jsonify({"category": int(prediction)})
+        prediction = model.predict([message])[0]
+
+        text = message.lower()
+
+        scam_keywords = [
+            "prize", "gift", "claim", "winner",
+            "reward", "congratulations",
+            "offer", "free", "click here"
+        ]
+
+        if prediction == 0:
+            for word in scam_keywords:
+                if word in text:
+                    prediction = 3
+                    break
+
+        return jsonify({"category": int(prediction)})
+
+    except:
+        return jsonify({"category": 0})
