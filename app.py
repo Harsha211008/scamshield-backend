@@ -28,7 +28,8 @@ def predict():
         # Limit extremely long text
         message = message[:500]
 
-        prediction = model.predict([message])[0]
+       vectorized = vectorizer.transform([message])
+prediction = model.predict(vectorized)[0]
 
         text = message.lower()
 
@@ -48,4 +49,5 @@ def predict():
 
     except:
         return jsonify({"category": 0})
+
 
