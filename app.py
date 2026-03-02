@@ -8,7 +8,9 @@ CORS(app)
 # Load trained model
 model = pickle.load(open("scam_model.pkl", "rb"))
 vectorizer = pickle.load(open("vectorizer.pkl", "rb"))
-
+@app.route('/', methods=['GET'])
+def home():
+    return jsonify({"status": "ScamAlert AI running"})
 @app.route('/predict', methods=['POST'])
 def predict():
 
@@ -46,3 +48,4 @@ def predict():
 
     except:
         return jsonify({"category": 0})
+
