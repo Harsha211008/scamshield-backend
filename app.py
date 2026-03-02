@@ -15,9 +15,9 @@ def home():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    try:
-        data = request.get_json()
+    data = request.get_json()
 
+    try:
         if not data or "message" not in data:
             return jsonify({"category": 0})
 
@@ -26,10 +26,8 @@ def predict():
         if message == "":
             return jsonify({"category": 0})
 
-        # Limit extremely long text
         message = message[:500]
 
-        # Convert using vectorizer
         vectorized = vectorizer.transform([message])
         prediction = model.predict(vectorized)[0]
 
@@ -49,9 +47,5 @@ def predict():
 
         return jsonify({"category": int(prediction)})
 
-    except:
+    except Exception:
         return jsonify({"category": 0})
-
-    except:
-        return jsonify({"category": 0})
-
