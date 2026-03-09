@@ -3,3 +3,7 @@ flask-cors
 scikit-learn
 numpy
 gunicorn
+tldextract
+python-whois
+cachetools
+Levenshtein

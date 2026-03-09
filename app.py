@@ -1,6 +1,11 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pickle
+import asyncio
+
+# Import new modules
+from url_scanner import scan_urls
+from scam_pattern_detector import analyze_patterns
 
 app = Flask(__name__)
 CORS(app)
@@ -9,43 +14,71 @@ CORS(app)
 model = pickle.load(open("scam_model.pkl", "rb"))
 vectorizer = pickle.load(open("vectorizer.pkl", "rb"))
 
-@app.route('/', methods=['GET'])
-def home():
-    return jsonify({"status": "ScamAlert AI running"})
-
 @app.route('/predict', methods=['POST'])
-def predict():
+async def predict():
+
     data = request.get_json()
 
-    try:
-        if not data or "message" not in data:
-            return jsonify({"category": 0})
+    if not data or "message" not in data:
+        return jsonify({"error": "Message missing"}), 400
 
-        message = str(data["message"]).strip()
+    message = data["message"]
 
-        if message == "":
-            return jsonify({"category": 0})
+    # -------------------------
+    # 1️⃣ Run ML model
+    # -------------------------
+    message_vec = vectorizer.transform([message])
+    prediction = model.predict(message_vec)[0]
 
-        message = message[:500]
+    # -------------------------
+    # 2️⃣ Keyword fallback detection
+    # -------------------------
+    text = message.lower()
 
-        vectorized = vectorizer.transform([message])
-        prediction = model.predict(vectorized)[0]
+    scam_keywords = [
+        "prize", "gift", "claim", "winner",
+        "reward", "congratulations",
+        "offer", "free", "click here"
+    ]
 
-        text = message.lower()
+    if prediction == 0:
+        for word in scam_keywords:
+            if word in text:
+                prediction = 3
+                break
 
-        scam_keywords = [
-            "prize", "gift", "claim", "winner",
-            "reward", "congratulations",
-            "offer", "free", "click here"
-        ]
+    # -------------------------
+    # 3️⃣ Detect scam patterns
+    # -------------------------
+    scam_patterns = analyze_patterns(message)
 
-        if prediction == 0:
-            for word in scam_keywords:
-                if word in text:
-                    prediction = 3
-                    break
+    # -------------------------
+    # 4️⃣ Scan URLs
+    # -------------------------
+    url_analysis = await scan_urls(message)
 
-        return jsonify({"category": int(prediction)})
+    # -------------------------
+    # 5️⃣ Escalate scam if URL high risk
+    # -------------------------
+    for url in url_analysis:
+        if (
+            url["shortened"]
+            or url["suspicious_tld"]
+            or url["typosquatting"]
+            or (0 <= url["domain_age_days"] < 90)
+        ):
+            prediction = 3
+            break
 
-    except Exception:
-        return jsonify({"category": 0})
+    # -------------------------
+    # 6️⃣ Final response
+    # -------------------------
+    return jsonify({
+        "category": int(prediction),
+        "url_analysis": url_analysis,
+        "scam_patterns": scam_patterns
+    })
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
