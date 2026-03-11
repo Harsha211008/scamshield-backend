@@ -3,19 +3,31 @@ from flask_cors import CORS
 import pickle
 import asyncio
 
-# Import new modules
+# Import modules
 from url_scanner import scan_urls
 from scam_pattern_detector import analyze_patterns
 
 app = Flask(__name__)
 CORS(app)
 
-# Load trained model
+# Load trained ML model
 model = pickle.load(open("scam_model.pkl", "rb"))
 vectorizer = pickle.load(open("vectorizer.pkl", "rb"))
 
+
+# -----------------------------
+# Root route (health check)
+# -----------------------------
+@app.route("/", methods=["GET"])
+def home():
+    return "ScamAlert AI Backend Running"
+
+
+# -----------------------------
+# Main prediction endpoint
+# -----------------------------
 @app.route('/predict', methods=['POST'])
-async def predict():
+def predict():
 
     data = request.get_json()
 
@@ -53,25 +65,25 @@ async def predict():
     scam_patterns = analyze_patterns(message)
 
     # -------------------------
-    # 4️⃣ Scan URLs
+    # 4️⃣ Scan URLs (async call)
     # -------------------------
-    url_analysis = await scan_urls(message)
+    url_analysis = asyncio.run(scan_urls(message))
 
     # -------------------------
     # 5️⃣ Escalate scam if URL high risk
     # -------------------------
     for url in url_analysis:
         if (
-            url["shortened"]
-            or url["suspicious_tld"]
-            or url["typosquatting"]
-            or (0 <= url["domain_age_days"] < 90)
+            url.get("shortened")
+            or url.get("suspicious_tld")
+            or url.get("typosquatting")
+            or (0 <= url.get("domain_age_days", -1) < 90)
         ):
             prediction = 3
             break
 
     # -------------------------
-    # 6️⃣ Final response
+    # 6️⃣ Return final response
     # -------------------------
     return jsonify({
         "category": int(prediction),
@@ -80,5 +92,8 @@ async def predict():
     })
 
 
+# -----------------------------
+# Local testing only
+# -----------------------------
 if __name__ == "__main__":
     app.run(debug=True)
