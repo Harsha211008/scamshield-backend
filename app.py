@@ -3,30 +3,20 @@ from flask_cors import CORS
 import pickle
 import asyncio
 
-# Import modules
 from url_scanner import scan_urls
 from scam_pattern_detector import analyze_patterns
 
 app = Flask(__name__)
 CORS(app)
 
-# Load trained ML model
 model = pickle.load(open("scam_model.pkl", "rb"))
 vectorizer = pickle.load(open("vectorizer.pkl", "rb"))
 
-
-# -----------------------------
-# Root route (health check)
-# -----------------------------
 @app.route("/", methods=["GET"])
 def home():
     return "ScamAlert AI Backend Running"
 
-
-# -----------------------------
-# Main prediction endpoint
-# -----------------------------
-@app.route('/predict', methods=['POST'])
+@app.route("/predict", methods=["POST"])
 def predict():
 
     data = request.get_json()
@@ -36,21 +26,15 @@ def predict():
 
     message = data["message"]
 
-    # -------------------------
-    # 1️⃣ Run ML model
-    # -------------------------
     message_vec = vectorizer.transform([message])
     prediction = model.predict(message_vec)[0]
 
-    # -------------------------
-    # 2️⃣ Keyword fallback detection
-    # -------------------------
     text = message.lower()
 
     scam_keywords = [
-        "prize", "gift", "claim", "winner",
-        "reward", "congratulations",
-        "offer", "free", "click here"
+        "prize","gift","claim","winner",
+        "reward","congratulations",
+        "offer","free","click here"
     ]
 
     if prediction == 0:
@@ -59,19 +43,13 @@ def predict():
                 prediction = 3
                 break
 
-    # -------------------------
-    # 3️⃣ Detect scam patterns
-    # -------------------------
     scam_patterns = analyze_patterns(message)
 
-    # -------------------------
-    # 4️⃣ Scan URLs (async call)
-    # -------------------------
-    url_analysis = asyncio.run(scan_urls(message))
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    url_analysis = loop.run_until_complete(scan_urls(message))
+    loop.close()
 
-    # -------------------------
-    # 5️⃣ Escalate scam if URL high risk
-    # -------------------------
     for url in url_analysis:
         if (
             url.get("shortened")
@@ -82,9 +60,6 @@ def predict():
             prediction = 3
             break
 
-    # -------------------------
-    # 6️⃣ Return final response
-    # -------------------------
     return jsonify({
         "category": int(prediction),
         "url_analysis": url_analysis,
@@ -92,8 +67,5 @@ def predict():
     })
 
 
-# -----------------------------
-# Local testing only
-# -----------------------------
 if __name__ == "__main__":
     app.run(debug=True)
