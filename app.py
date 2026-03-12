@@ -1,115 +1,207 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
 import os
-
-# ScamAlert modules
-from ml_model import predict_scam_probability
-from rule_engine import analyze_rules
-from threat_scoring import score_signals
-from entity_detector import detect_entities
-from language_utils import detect_language, translate_category
-from reputation_checker import check_reputation
-from url_scanner import scan_urls
-from scam_pattern_detector import analyze_patterns
+import logging
+import asyncio
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
-CORS(app)
+
+# ------------------------------------------------------------------
+# Logging
+# ------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("ScamAlert")
+
+# ------------------------------------------------------------------
+# Module Imports
+# ------------------------------------------------------------------
+try:
+    from ml_model import ScamClassifier
+    from rule_engine import RuleAnalyzer
+    from threat_scoring import ThreatScorer
+    from entity_detector import EntityExtractor
+    from reputation_checker import ReputationLookup
+    from language_utils import LanguageManager
+    from url_scanner import scan_urls
+    from scam_pattern_detector import analyze_patterns
+
+    ml_classifier = ScamClassifier(
+        model_path="scam_model.pkl",
+        vectorizer_path="vectorizer.pkl"
+    )
+
+    rule_engine = RuleAnalyzer()
+    threat_scorer = ThreatScorer()
+    entity_detector = EntityExtractor()
+    reputation_checker = ReputationLookup()
+    language_manager = LanguageManager()
+
+    logger.info("All modules loaded successfully")
+
+except Exception as e:
+    logger.error(f"Module load failure: {e}")
+    ml_classifier = None
 
 
-# -----------------------------------------
-# HEALTH CHECK (important for Render)
-# -----------------------------------------
+# ------------------------------------------------------------------
+# Basic Routes
+# ------------------------------------------------------------------
 @app.route("/", methods=["GET"])
 def home():
-    return "ScamAlert AI Backend Running"
+    return jsonify({
+        "service": "ScamAlert API",
+        "status": "running"
+    })
 
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok"})
+    if ml_classifier is None:
+        return jsonify({"status": "error"}), 500
+
+    return jsonify({"status": "healthy"})
 
 
-# -----------------------------------------
-# MAIN SCAN ENDPOINT
-# -----------------------------------------
+# ------------------------------------------------------------------
+# Prediction Endpoint
+# ------------------------------------------------------------------
 @app.route("/predict", methods=["POST"])
 def predict():
 
-    data = request.get_json()
+    try:
 
-    if not data or "message" not in data:
-        return jsonify({"error": "Message missing"}), 400
+        if not request.is_json:
+            return jsonify({"error": "Request must be JSON"}), 400
 
-    message = data["message"]
-    sender = data.get("sender", None)
+        data = request.get_json()
+        message = data.get("message", "")
 
-    # -----------------------------------------
-    # 1️⃣ Detect entities (phone/email/UPI)
-    # -----------------------------------------
-    entities = detect_entities(message)
+        if not message or not isinstance(message, str):
+            return jsonify({"error": "Message required"}), 400
 
-    # -----------------------------------------
-    # 2️⃣ ML prediction
-    # -----------------------------------------
-    ml_probability = predict_scam_probability(message)
+        text = message.strip()
 
-    # -----------------------------------------
-    # 3️⃣ Rule engine analysis
-    # -----------------------------------------
-    rule_results = analyze_rules(message, sender)
+        if ml_classifier is None:
+            return jsonify({"error": "AI modules unavailable"}), 500
 
-    # -----------------------------------------
-    # 4️⃣ URL analysis
-    # -----------------------------------------
-    url_analysis = scan_urls(message)
+        # ----------------------------------------------------------
+        # Language Processing
+        # ----------------------------------------------------------
+        try:
+            lang_data = language_manager.process(text)
+            language = lang_data.get("language", "unknown")
+            processed_text = lang_data.get("translated_text", text)
+        except:
+            language = "unknown"
+            processed_text = text
 
-    # -----------------------------------------
-    # 5️⃣ Pattern detection
-    # -----------------------------------------
-    pattern_results = analyze_patterns(message)
+        # ----------------------------------------------------------
+        # Entity Detection
+        # ----------------------------------------------------------
+        try:
+            entities = entity_detector.extract(processed_text)
+        except:
+            entities = {"phones": [], "emails": [], "upi": []}
 
-    # -----------------------------------------
-    # 6️⃣ Reputation check
-    # -----------------------------------------
-    reputation = check_reputation(entities)
+        # ----------------------------------------------------------
+        # URL Scan (async handled safely)
+        # ----------------------------------------------------------
+        try:
+            url_analysis = asyncio.run(scan_urls(processed_text))
+        except:
+            url_analysis = []
 
-    # -----------------------------------------
-    # 7️⃣ Threat scoring
-    # -----------------------------------------
-    scoring_result = score_signals(
-        ml_probability=ml_probability,
-        rule_results=rule_results,
-        url_results=url_analysis,
-        pattern_results=pattern_results,
-        reputation=reputation
-    )
+        # ----------------------------------------------------------
+        # Pattern Detection
+        # ----------------------------------------------------------
+        try:
+            patterns = analyze_patterns(processed_text)
+        except:
+            patterns = {}
 
-    threat_score = scoring_result["score"]
-    category = scoring_result["category"]
-    explanations = scoring_result["reasons"]
+        # ----------------------------------------------------------
+        # Machine Learning Prediction
+        # ----------------------------------------------------------
+        try:
+            ml_prob = ml_classifier.get_scam_probability(processed_text)
+        except:
+            ml_prob = 0.0
 
-    # -----------------------------------------
-    # 8️⃣ Language detection
-    # -----------------------------------------
-    detected_lang = detect_language(message)
-    translated_category = translate_category(category, detected_lang)
+        # ----------------------------------------------------------
+        # Reputation Check
+        # ----------------------------------------------------------
+        try:
+            reputation = reputation_checker.check(entities, url_analysis)
+        except:
+            reputation = {}
 
-    # -----------------------------------------
-    # FINAL RESPONSE
-    # -----------------------------------------
-    return jsonify({
-        "category": translated_category,
-        "threat_score": threat_score,
-        "explanations": explanations,
-        "entities": entities,
-        "urls": url_analysis,
-        "language": detected_lang
-    })
+        # ----------------------------------------------------------
+        # Rule Engine
+        # ----------------------------------------------------------
+        try:
+            rule_flags = rule_engine.evaluate(
+                processed_text,
+                entities,
+                patterns
+            )
+        except:
+            rule_flags = []
+
+        # ----------------------------------------------------------
+        # Threat Score
+        # ----------------------------------------------------------
+        try:
+            result = threat_scorer.calculate(
+                ml_prob=ml_prob,
+                urls=url_analysis,
+                patterns=patterns,
+                reputation=reputation,
+                rules=rule_flags
+            )
+
+            threat_score = result.get("threat_score", 0)
+            category = result.get("category", "SAFE")
+            reasons = result.get("reasons", [])
+
+        except:
+            threat_score = 0
+            category = "UNKNOWN"
+            reasons = ["Threat scoring failed"]
+
+        # ----------------------------------------------------------
+        # Final Response
+        # ----------------------------------------------------------
+        return jsonify({
+            "category": category,
+            "threat_score": threat_score,
+            "explanations": reasons,
+            "entities": entities,
+            "urls": url_analysis,
+            "language": language
+        })
+
+    except Exception as e:
+
+        logger.error(f"Prediction error: {e}")
+
+        return jsonify({
+            "error": "Internal error",
+            "category": "UNKNOWN",
+            "threat_score": 0
+        }), 500
 
 
-# -----------------------------------------
-# RUN SERVER (RENDER COMPATIBLE)
-# -----------------------------------------
+# ------------------------------------------------------------------
+# Server Start
+# ------------------------------------------------------------------
 if __name__ == "__main__":
+
     port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=False
+    )
