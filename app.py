@@ -1,31 +1,39 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import os
 
-from ml_model import load_model, predict_probability
+# ScamAlert modules
+from ml_model import predict_scam_probability
 from rule_engine import analyze_rules
-from threat_scoring import calculate_threat_score
+from threat_scoring import score_signals
+from entity_detector import detect_entities
 from language_utils import detect_language, translate_category
-
-from entity_detector import extract_entities
 from reputation_checker import check_reputation
-
 from url_scanner import scan_urls
 from scam_pattern_detector import analyze_patterns
 
 app = Flask(__name__)
 CORS(app)
 
-# Load ML model once at startup
-model, vectorizer = load_model()
 
-
-@app.route("/")
+# -----------------------------------------
+# HEALTH CHECK (important for Render)
+# -----------------------------------------
+@app.route("/", methods=["GET"])
 def home():
     return "ScamAlert AI Backend Running"
 
 
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"})
+
+
+# -----------------------------------------
+# MAIN SCAN ENDPOINT
+# -----------------------------------------
 @app.route("/predict", methods=["POST"])
-async def predict():
+def predict():
 
     data = request.get_json()
 
@@ -33,60 +41,75 @@ async def predict():
         return jsonify({"error": "Message missing"}), 400
 
     message = data["message"]
+    sender = data.get("sender", None)
 
-    # Detect language
-    lang = data.get("language")
-    if not lang:
-        lang = detect_language(message)
+    # -----------------------------------------
+    # 1️⃣ Detect entities (phone/email/UPI)
+    # -----------------------------------------
+    entities = detect_entities(message)
 
-    # ML prediction
-    ml_prob = predict_probability(message, model, vectorizer)
+    # -----------------------------------------
+    # 2️⃣ ML prediction
+    # -----------------------------------------
+    ml_probability = predict_scam_probability(message)
 
-    # Rule engine analysis
-    rules = analyze_rules(message)
+    # -----------------------------------------
+    # 3️⃣ Rule engine analysis
+    # -----------------------------------------
+    rule_results = analyze_rules(message, sender)
 
-    # URL analysis
-    url_analysis = await scan_urls(message)
+    # -----------------------------------------
+    # 4️⃣ URL analysis
+    # -----------------------------------------
+    url_analysis = scan_urls(message)
 
-    # Pattern detection
-    patterns = analyze_patterns(message)
+    # -----------------------------------------
+    # 5️⃣ Pattern detection
+    # -----------------------------------------
+    pattern_results = analyze_patterns(message)
 
-    # Entity detection
-    entities = extract_entities(message)
+    # -----------------------------------------
+    # 6️⃣ Reputation check
+    # -----------------------------------------
+    reputation = check_reputation(entities)
 
-    # Reputation check
-    rep_score, rep_reasons = check_reputation(entities)
-
-    # Threat scoring
-    threat_score, category, explanations = calculate_threat_score(
-        ml_prob,
-        rules,
-        url_analysis
+    # -----------------------------------------
+    # 7️⃣ Threat scoring
+    # -----------------------------------------
+    scoring_result = score_signals(
+        ml_probability=ml_probability,
+        rule_results=rule_results,
+        url_results=url_analysis,
+        pattern_results=pattern_results,
+        reputation=reputation
     )
 
-    # Add reputation signals
-    threat_score += rep_score
-    explanations.extend(rep_reasons)
+    threat_score = scoring_result["score"]
+    category = scoring_result["category"]
+    explanations = scoring_result["reasons"]
 
-    # Clamp score
-    threat_score = max(0, min(100, threat_score))
+    # -----------------------------------------
+    # 8️⃣ Language detection
+    # -----------------------------------------
+    detected_lang = detect_language(message)
+    translated_category = translate_category(category, detected_lang)
 
-    # Translate category if needed
-    translated_category = translate_category(category, lang)
-
-    response = {
+    # -----------------------------------------
+    # FINAL RESPONSE
+    # -----------------------------------------
+    return jsonify({
         "category": translated_category,
-        "category_code": category,
         "threat_score": threat_score,
         "explanations": explanations,
         "entities": entities,
-        "url_analysis": url_analysis,
-        "patterns": patterns,
-        "language": lang
-    }
-
-    return jsonify(response)
+        "urls": url_analysis,
+        "language": detected_lang
+    })
 
 
+# -----------------------------------------
+# RUN SERVER (RENDER COMPATIBLE)
+# -----------------------------------------
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
