@@ -1,7 +1,13 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import pickle
-import asyncio
+
+from ml_model import load_model, predict_probability
+from rule_engine import analyze_rules
+from threat_scoring import calculate_threat_score
+from language_utils import detect_language, translate_category
+
+from entity_detector import extract_entities
+from reputation_checker import check_reputation
 
 from url_scanner import scan_urls
 from scam_pattern_detector import analyze_patterns
@@ -9,15 +15,17 @@ from scam_pattern_detector import analyze_patterns
 app = Flask(__name__)
 CORS(app)
 
-model = pickle.load(open("scam_model.pkl", "rb"))
-vectorizer = pickle.load(open("vectorizer.pkl", "rb"))
+# Load ML model once at startup
+model, vectorizer = load_model()
 
-@app.route("/", methods=["GET"])
+
+@app.route("/")
 def home():
     return "ScamAlert AI Backend Running"
 
+
 @app.route("/predict", methods=["POST"])
-def predict():
+async def predict():
 
     data = request.get_json()
 
@@ -26,45 +34,58 @@ def predict():
 
     message = data["message"]
 
-    message_vec = vectorizer.transform([message])
-    prediction = model.predict(message_vec)[0]
+    # Detect language
+    lang = data.get("language")
+    if not lang:
+        lang = detect_language(message)
 
-    text = message.lower()
+    # ML prediction
+    ml_prob = predict_probability(message, model, vectorizer)
 
-    scam_keywords = [
-        "prize","gift","claim","winner",
-        "reward","congratulations",
-        "offer","free","click here"
-    ]
+    # Rule engine analysis
+    rules = analyze_rules(message)
 
-    if prediction == 0:
-        for word in scam_keywords:
-            if word in text:
-                prediction = 3
-                break
+    # URL analysis
+    url_analysis = await scan_urls(message)
 
-    scam_patterns = analyze_patterns(message)
+    # Pattern detection
+    patterns = analyze_patterns(message)
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    url_analysis = loop.run_until_complete(scan_urls(message))
-    loop.close()
+    # Entity detection
+    entities = extract_entities(message)
 
-    for url in url_analysis:
-        if (
-            url.get("shortened")
-            or url.get("suspicious_tld")
-            or url.get("typosquatting")
-            or (0 <= url.get("domain_age_days", -1) < 90)
-        ):
-            prediction = 3
-            break
+    # Reputation check
+    rep_score, rep_reasons = check_reputation(entities)
 
-    return jsonify({
-        "category": int(prediction),
+    # Threat scoring
+    threat_score, category, explanations = calculate_threat_score(
+        ml_prob,
+        rules,
+        url_analysis
+    )
+
+    # Add reputation signals
+    threat_score += rep_score
+    explanations.extend(rep_reasons)
+
+    # Clamp score
+    threat_score = max(0, min(100, threat_score))
+
+    # Translate category if needed
+    translated_category = translate_category(category, lang)
+
+    response = {
+        "category": translated_category,
+        "category_code": category,
+        "threat_score": threat_score,
+        "explanations": explanations,
+        "entities": entities,
         "url_analysis": url_analysis,
-        "scam_patterns": scam_patterns
-    })
+        "patterns": patterns,
+        "language": lang
+    }
+
+    return jsonify(response)
 
 
 if __name__ == "__main__":

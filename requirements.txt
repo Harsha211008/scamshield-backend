@@ -7,3 +7,5 @@ tldextract
 python-whois
 cachetools
 Levenshtein
+langdetect
+scikit-learn
