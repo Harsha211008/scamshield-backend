@@ -7,31 +7,37 @@ BANK_WORDS=["sbi","hdfc","icici","axis","bank"]
 
 OTP_PATTERN=re.compile(r"\b(otp|verification code|one time password)\b",re.I)
 
-def analyze_rules(text):
 
-    text=text.lower()
+class RuleAnalyzer:
 
-    rules={
-        "otp_delivery_context":False,
-        "otp_reward_bait":False,
-        "reward_bait_language":False,
-        "urgent_language":False,
-        "bank_impersonation":False
-    }
+    def __init__(self):
+        pass
 
-    if OTP_PATTERN.search(text) and any(w in text for w in DELIVERY_WORDS):
-        rules["otp_delivery_context"]=True
+    def evaluate(self,text,entities=None,patterns=None):
 
-    if OTP_PATTERN.search(text) and any(w in text for w in REWARD_WORDS):
-        rules["otp_reward_bait"]=True
+        text=text.lower()
 
-    if any(w in text for w in REWARD_WORDS):
-        rules["reward_bait_language"]=True
+        rules={
+            "otp_delivery_context":False,
+            "otp_reward_bait":False,
+            "reward_bait_language":False,
+            "urgent_language":False,
+            "bank_impersonation":False
+        }
 
-    if any(w in text for w in URGENT_WORDS):
-        rules["urgent_language"]=True
+        if OTP_PATTERN.search(text) and any(w in text for w in DELIVERY_WORDS):
+            rules["otp_delivery_context"]=True
 
-    if any(w in text for w in BANK_WORDS):
-        rules["bank_impersonation"]=True
+        if OTP_PATTERN.search(text) and any(w in text for w in REWARD_WORDS):
+            rules["otp_reward_bait"]=True
 
-    return rules
+        if any(w in text for w in REWARD_WORDS):
+            rules["reward_bait_language"]=True
+
+        if any(w in text for w in URGENT_WORDS):
+            rules["urgent_language"]=True
+
+        if any(w in text for w in BANK_WORDS):
+            rules["bank_impersonation"]=True
+
+        return rules
