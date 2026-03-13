@@ -1,23 +1,18 @@
 import re
 
-PATTERNS = {
-"reward_bait": re.compile(r'\b(lottery|won|reward|prize|free gift)\b', re.I),
-
-"urgency_language": re.compile(r'\b(act now|urgent|immediate|expires today)\b', re.I),
-
-"authority_impersonation": re.compile(r'\b(bank|income tax|government|rbi)\b', re.I),
-
-"fear_tactics": re.compile(r'\b(account blocked|legal action|suspended)\b', re.I),
-
-"financial_requests": re.compile(r'\b(send money|processing fee|pay now|upi)\b', re.I)
-}
-
 def analyze_patterns(text):
 
-    results = {}
+    text=text.lower()
 
-    for name,pattern in PATTERNS.items():
+    patterns={
+        "reward_bait_language":False,
+        "urgent_language":False
+    }
 
-        results[name] = bool(pattern.search(text))
+    if re.search(r"won|prize|lottery|reward|congratulations",text):
+        patterns["reward_bait_language"]=True
 
-    return results
+    if re.search(r"urgent|immediately|expire|suspended",text):
+        patterns["urgent_language"]=True
+
+    return patterns

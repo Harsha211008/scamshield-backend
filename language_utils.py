@@ -1,30 +1,15 @@
 from langdetect import detect
 
-translations={
-"te":{
-"SAFE":"సురక్షితం",
-"PROMO":"ప్రచారం",
-"SUSPICIOUS":"సందేహాస్పదం",
-"SCAM":"మోసం"
-},
-"hi":{
-"SAFE":"सुरक्षित",
-"PROMO":"प्रमोशन",
-"SUSPICIOUS":"संदिग्ध",
-"SCAM":"धोखा"
-}
-}
+class LanguageManager:
 
-def detect_language(text):
+    def process(self,text):
 
-    try:
-        return detect(text)
-    except:
-        return "en"
+        try:
+            lang=detect(text)
+        except:
+            lang="unknown"
 
-def translate_category(category,lang):
-
-    if lang in translations:
-        return translations[lang].get(category,category)
-
-    return category
+        return {
+            "language":lang,
+            "translated_text":text
+        }

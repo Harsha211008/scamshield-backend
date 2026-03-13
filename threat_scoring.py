@@ -1,70 +1,42 @@
-def calculate_threat_score(ml_prob, rules, urls):
+class ThreatScorer:
 
-    score = int(ml_prob * 40)
+    def score_signals(self, ml_probability, url_data, pattern_data, rule_data, reputation_data):
 
-    explanations = []
+        score=int(ml_probability*40)
 
-    # reward bait
-    if rules.get("reward_bait_language"):
-        score += 15
-        explanations.append(
-            "This message promises rewards or prizes which scammers often use."
-        )
+        explanations=[]
 
-    # urgency
-    if rules.get("urgent_language"):
-        score += 10
-        explanations.append(
-            "The message uses urgent language to pressure you."
-        )
+        if pattern_data.get("reward_bait_language"):
+            score+=10
+            explanations.append("Reward bait language detected")
 
-    # bank impersonation
-    if rules.get("bank_impersonation"):
-        score += 15
-        explanations.append(
-            "The message may be pretending to be from a bank."
-        )
+        if pattern_data.get("urgent_language"):
+            score+=8
+            explanations.append("Urgency pressure detected")
 
-    # OTP reward scam
-    if rules.get("otp_reward_bait"):
-        score += 20
-        explanations.append(
-            "The message asks for an OTP in exchange for rewards which is unsafe."
-        )
+        if "reward_otp" in rule_data:
+            score+=18
+            explanations.append("OTP requested for reward")
 
-    # delivery OTP (safe context)
-    if rules.get("otp_delivery_context"):
-        score -= 20
-        explanations.append(
-            "The OTP appears related to a delivery or order which is usually safe."
-        )
+        if url_data:
+            score+=10
+            explanations.append("Suspicious link detected")
 
-    # URL signals
-    for url in urls:
+        if reputation_data.get("score",0)>0:
+            score+=reputation_data["score"]
+            explanations.extend(reputation_data.get("reasons",[]))
 
-        if url.get("is_shortened"):
-            score += 10
-            explanations.append(
-                "The message contains a shortened link which scammers often use."
-            )
+        score=max(0,min(score,100))
 
-        if url.get("typosquatting"):
-            score += 15
-            explanations.append(
-                "The link looks similar to a real website but may be fake."
-            )
+        if score>=80:
+            category="SCAM"
+        elif score>=50:
+            category="SUSPICIOUS"
+        else:
+            category="SAFE"
 
-    # clamp score
-    score = max(0, min(score, 100))
-
-    # determine category
-    if score < 25:
-        category = "SAFE"
-    elif score < 45:
-        category = "PROMO"
-    elif score < 65:
-        category = "SUSPICIOUS"
-    else:
-        category = "SCAM"
-
-    return score, category, explanations
+        return {
+            "threat_score":score,
+            "category":category,
+            "explanations":explanations
+        }

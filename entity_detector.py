@@ -1,17 +1,19 @@
 import re
 
-PHONE_PATTERN = r'(\+?\d[\d\-\s]{8,}\d)'
-EMAIL_PATTERN = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
-UPI_PATTERN = r'[a-zA-Z0-9.\-_]{2,}@[a-zA-Z]{2,}'
+PHONE_REGEX=r"\b\d{10}\b"
+EMAIL_REGEX=r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
+UPI_REGEX=r"\b[\w.-]+@[a-zA-Z]+\b"
 
-def extract_entities(text):
+class EntityExtractor:
 
-    phones = re.findall(PHONE_PATTERN, text)
-    emails = re.findall(EMAIL_PATTERN, text)
-    upis = re.findall(UPI_PATTERN, text)
+    def extract(self,text):
 
-    return {
-        "phones": phones,
-        "emails": emails,
-        "upi_ids": upis
-    }
+        phones=re.findall(PHONE_REGEX,text)
+        emails=re.findall(EMAIL_REGEX,text)
+        upi=re.findall(UPI_REGEX,text)
+
+        return {
+            "phones":phones,
+            "emails":emails,
+            "upi":upi
+        }

@@ -58,6 +58,7 @@ def home():
 
 @app.route("/health", methods=["GET"])
 def health():
+
     if ml_classifier is None:
         return jsonify({"status": "error"}), 500
 
@@ -93,7 +94,8 @@ def predict():
             lang_data = language_manager.process(text)
             language = lang_data.get("language", "unknown")
             processed_text = lang_data.get("translated_text", text)
-        except:
+        except Exception as e:
+            logger.error(f"Language error: {e}")
             language = "unknown"
             processed_text = text
 
@@ -102,15 +104,17 @@ def predict():
         # ----------------------------------------------------------
         try:
             entities = entity_detector.extract(processed_text)
-        except:
+        except Exception as e:
+            logger.error(f"Entity detection error: {e}")
             entities = {"phones": [], "emails": [], "upi": []}
 
         # ----------------------------------------------------------
-        # URL Scan (async handled safely)
+        # URL Scan
         # ----------------------------------------------------------
         try:
             url_analysis = asyncio.run(scan_urls(processed_text))
-        except:
+        except Exception as e:
+            logger.error(f"URL scan error: {e}")
             url_analysis = []
 
         # ----------------------------------------------------------
@@ -118,15 +122,18 @@ def predict():
         # ----------------------------------------------------------
         try:
             patterns = analyze_patterns(processed_text)
-        except:
+        except Exception as e:
+            logger.error(f"Pattern detection error: {e}")
             patterns = {}
 
         # ----------------------------------------------------------
         # Machine Learning Prediction
         # ----------------------------------------------------------
         try:
-            ml_prob = ml_classifier.get_scam_probability(processed_text)
-        except:
+            ml_result = ml_classifier.predict(processed_text)
+            ml_prob = ml_result.get("probability", 0)
+        except Exception as e:
+            logger.error(f"ML error: {e}")
             ml_prob = 0.0
 
         # ----------------------------------------------------------
@@ -134,8 +141,9 @@ def predict():
         # ----------------------------------------------------------
         try:
             reputation = reputation_checker.check(entities, url_analysis)
-        except:
-            reputation = {}
+        except Exception as e:
+            logger.error(f"Reputation error: {e}")
+            reputation = {"score": 0, "reasons": []}
 
         # ----------------------------------------------------------
         # Rule Engine
@@ -146,26 +154,31 @@ def predict():
                 entities,
                 patterns
             )
-        except:
+        except Exception as e:
+            logger.error(f"Rule engine error: {e}")
             rule_flags = []
 
         # ----------------------------------------------------------
         # Threat Score
         # ----------------------------------------------------------
         try:
-            result = threat_scorer.calculate(
-                ml_prob=ml_prob,
-                urls=url_analysis,
-                patterns=patterns,
-                reputation=reputation,
-                rules=rule_flags
+
+            result = threat_scorer.score_signals(
+                ml_probability=ml_prob,
+                url_data=url_analysis,
+                pattern_data=patterns,
+                rule_data=rule_flags,
+                reputation_data=reputation
             )
 
             threat_score = result.get("threat_score", 0)
             category = result.get("category", "SAFE")
-            reasons = result.get("reasons", [])
+            reasons = result.get("explanations", [])
 
-        except:
+        except Exception as e:
+
+            logger.error(f"Threat scoring error: {e}")
+
             threat_score = 0
             category = "UNKNOWN"
             reasons = ["Threat scoring failed"]

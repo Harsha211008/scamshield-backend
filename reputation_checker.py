@@ -1,30 +1,30 @@
-# simple reputation memory (later this becomes database)
+class ReputationLookup:
 
-scam_database = {
-    "phones": set(),
-    "urls": set(),
-    "upi_ids": set(),
-    "emails": set()
-}
+    def __init__(self):
 
-def check_reputation(entities):
+        self.database={
+            "phones":set(),
+            "urls":set(),
+            "emails":set(),
+            "upi":set()
+        }
 
-    score = 0
-    reasons = []
+    def check(self,entities,urls):
 
-    for p in entities["phones"]:
-        if p in scam_database["phones"]:
-            score += 40
-            reasons.append(f"Phone number {p} reported as scam")
+        score=0
+        reasons=[]
 
-    for u in entities["upi_ids"]:
-        if u in scam_database["upi_ids"]:
-            score += 40
-            reasons.append(f"UPI ID {u} reported as scam")
+        for p in entities.get("phones",[]):
+            if p in self.database["phones"]:
+                score+=40
+                reasons.append(f"Phone {p} reported as scam")
 
-    for e in entities["emails"]:
-        if e in scam_database["emails"]:
-            score += 30
-            reasons.append(f"Email {e} reported as scam")
+        for e in entities.get("emails",[]):
+            if e in self.database["emails"]:
+                score+=30
+                reasons.append(f"Email {e} reported as scam")
 
-    return score, reasons
+        return {
+            "score":score,
+            "reasons":reasons
+        }

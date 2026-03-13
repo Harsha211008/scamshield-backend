@@ -2,17 +2,16 @@ import pickle
 
 class ScamClassifier:
 
-    def __init__(self, model_path="scam_model.pkl", vectorizer_path="vectorizer.pkl"):
+    def __init__(self, model_path, vectorizer_path):
+        self.model = pickle.load(open(model_path, "rb"))
+        self.vectorizer = pickle.load(open(vectorizer_path, "rb"))
 
-        with open(model_path, "rb") as f:
-            self.model = pickle.load(f)
+    def predict(self, text):
 
-        with open(vectorizer_path, "rb") as f:
-            self.vectorizer = pickle.load(f)
+        vec = self.vectorizer.transform([text])
 
-    def get_scam_probability(self, text):
+        prob = self.model.predict_proba(vec)[0][1]
 
-        X = self.vectorizer.transform([text])
-        prob = self.model.predict_proba(X)[0][1]
-
-        return float(prob)
+        return {
+            "probability": float(prob)
+        }
