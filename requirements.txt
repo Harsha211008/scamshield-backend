@@ -1,11 +1,11 @@
 flask
 flask-cors
+gunicorn
 scikit-learn
 numpy
-gunicorn
 tldextract
 python-whois
 cachetools
 Levenshtein
 langdetect
-scikit-learn
+requests
